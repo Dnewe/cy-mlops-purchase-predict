@@ -102,6 +102,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.ruff_cache/
 
 # Translations
 *.mo
