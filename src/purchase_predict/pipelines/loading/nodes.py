@@ -9,6 +9,9 @@ import glob
 from google.cloud import storage
 
 
+TEMP_DIR = "tmp"
+
+
 def load_csv_from_bucket(project: str, bucket_path: str) -> pd.DataFrame:
     """
     Loads multiple CSV files from bucket (as generated from Spark).
@@ -20,9 +23,9 @@ def load_csv_from_bucket(project: str, bucket_path: str) -> pd.DataFrame:
     for blob in storage_client.list_blobs(bucket_name, prefix=folder):
         filename = blob.name.split("/")[-1]
         if filename[-3:] == "csv":
-            blob.download_to_filename("/tmp/" + filename)
+            blob.download_to_filename(f"{TEMP_DIR}/" + filename)
 
-    all_files = glob.glob("/tmp/*.csv")
+    all_files = glob.glob(f"{TEMP_DIR}/*.csv")
     li = []
 
     for filename in all_files:
