@@ -13,7 +13,7 @@ dependencies = [
     "notebook",
     "kedro~=1.2.0",
     "scikit-learn>=1.7.2",
-    "pandas>=2.3.3",
+    "pandas>=2.0.0,<3.0.0",
     "pandas-stubs>=2.3.3.260113",
     "kedro-datasets>=9.2.0",
     "kedro-viz>=12.3.0",
@@ -24,7 +24,7 @@ dependencies = [
     "pre-commit>=4.5.1",
     "pytest>=7.4.4",
     "pytest-cov>=6.3.0",
-    "mlflow==3.0.1",
+    "mlflow<3.1.0",
     "python-dotenv>=1.2.2",
 ]
 

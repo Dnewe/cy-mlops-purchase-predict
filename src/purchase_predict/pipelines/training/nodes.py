@@ -19,6 +19,14 @@ from hyperopt import hp, tpe, fmin
 
 import warnings
 
+import os
+import mlflow
+
+from matplotlib import pyplot as plt
+import matplotlib.ticker as mtick
+from sklearn.metrics import precision_recall_curve
+from mlflow.models import infer_signature  # ty: ignore[unresolved-import]
+
 warnings.filterwarnings("ignore")
 
 
@@ -124,28 +132,55 @@ def optimize_hyp(
 
 
 def auto_ml(
-    X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, y_test: np.ndarray, max_evals: int = 40
-) -> dict[str, BaseEstimator]:
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    max_evals: int = 40,
+    log_to_mlflow: bool = False,
+    experiment_id: int = -1,
+) -> dict[str, BaseEstimator | str]:
     """
     Runs training of multiple model instances and select the most accurated based on objective function.
     """
-    X = pd.concat((X_train, X_test))  # type: ignore
-    y = pd.concat((y_train, y_test))  # type: ignore
+    X = pd.concat([pd.DataFrame(X_train), pd.DataFrame(X_test)], ignore_index=True)
 
+    # Convert y to Series
+    y_train_flat = y_train.squeeze() if isinstance(y_train, pd.DataFrame) else y_train
+    y_test_flat = y_test.squeeze() if isinstance(y_test, pd.DataFrame) else y_test
+
+    y = pd.concat([pd.Series(y_train_flat), pd.Series(y_test_flat)], ignore_index=True)
     opt_models = []
+
+    run_id: str = None
+    if log_to_mlflow:
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_SERVER", "http://localhost:5000"))
+        exp_id = str(experiment_id)
+        try:
+            mlflow.get_experiment(exp_id)  # Verify exists # ty: ignore[possibly-missing-attribute]
+        except mlflow.exceptions.MlflowException:
+            # Auto-create if ID=1 or name-like
+            if experiment_id == 1:
+                exp_id = mlflow.create_experiment(  # ty: ignore[possibly-missing-attribute]
+                    "purchase_predict"
+                )  # Returns str ID
+
+        run: mlflow.ActiveRun = mlflow.start_run(experiment_id=exp_id)  # ty: ignore[possibly-missing-attribute]
+        run_id = run.info.run_id
+    model_specs: ModelSpec
+
     for model_specs in MODELS:
         # Finding best hyper-parameters with bayesian optimization
         optimum_params = optimize_hyp(
             model_specs["model_class"](),
             dataset=(X, y),
             search_space=model_specs["params"],
-            metric=lambda x, y: -f1_score(x, y),  # type: ignore
+            metric=lambda x, y: -f1_score(x, y),
             max_evals=max_evals,
         )
-        print("done")
         # Training the supposed best model with found hyper-parameters
         model = train_model(
-            model_specs["model_class"](),  # type: ignore
+            model_specs["model_class"](),
             training_set=(X_train, y_train),
             params=optimum_params,
         )
@@ -157,7 +192,33 @@ def auto_ml(
                 "score": f1_score(y_test, model.predict(X_test)),  # type: ignore
             }
         )
-
     # In case we have multiple models
     best_model = max(opt_models, key=lambda x: x["score"])
-    return dict(model=best_model)
+    if log_to_mlflow:
+        model_metrics = {"f1": best_model["score"]}
+        signature = infer_signature(X_train, best_model["model"].predict(X_train))
+        save_pr_curve(X_test, y_test, best_model["model"])
+
+        mlflow.log_metrics(model_metrics)  # ty: ignore[possibly-missing-attribute]
+        mlflow.log_params(best_model["params"])  # ty: ignore[possibly-missing-attribute]
+        # Only use if validation curves are produced
+        mlflow.log_artifact("data/04_feature/transform_pipeline.pkl")  # ty: ignore[possibly-missing-attribute]
+        mlflow.log_artifacts("data/08_reporting", artifact_path="plots")  # ty: ignore[possibly-missing-attribute]
+        mlflow_info = mlflow.sklearn.log_model(best_model["model"], name="model", signature=signature)
+
+        mlflow.end_run()  # ty: ignore[possibly-missing-attribute]
+    return {
+        "model": best_model["model"],
+        "mlflow_run_id": run_id,
+        "mlflow_model_uri": mlflow_info.model_uri if log_to_mlflow else "",
+    }  # Return just the model from the best_model dict
+
+
+def save_pr_curve(X, y, model):
+    plt.figure(figsize=(16, 11))
+    prec, recall, _ = precision_recall_curve(y, model.predict_proba(X)[:, 1], pos_label=1)
+    plt.title("PR Curve", fontsize=16)
+    plt.gca().xaxis.set_major_formatter(mtick.PercentFormatter(1, 0))
+    plt.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1, 0))
+    plt.savefig(os.path.expanduser("data/08_reporting/pr_curve.png"))
+    plt.close()
