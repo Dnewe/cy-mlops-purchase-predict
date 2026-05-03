@@ -18,6 +18,7 @@ steps:
           --config /tmp/purchase_predict_api/cloudbuild.yaml /tmp/purchase_predict_api \
           --substitutions=SHORT_SHA=$SHORT_SHA
 
+          
 logs_bucket: "gs://cours_mlops/logs_build_cloud_build"
 timeout: 1200s
 availableSecrets:
