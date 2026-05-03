@@ -3,7 +3,6 @@ import numpy as np
 from purchase_predict.pipelines.processing.nodes import encode_features, split_dataset
 from sklearn.preprocessing import LabelEncoder
 
-
 BALANCE_THRESHOLD = 0.1
 MIN_SAMPLES = 5000
 
