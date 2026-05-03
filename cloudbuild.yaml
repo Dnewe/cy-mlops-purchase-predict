@@ -9,4 +9,18 @@ steps:
     env:
       - "UV_CACHE_DIR=/root/.cache/uv"
 
-logs_bucket: gs://cours_mlops/logs_build_cloud_build
+  - name: "ghcr.io/astral-sh/uv:python3.12-trixie-slim"
+    id: CD
+    entrypoint: /bin/bash
+    args:
+      - "-c"
+      - "chmod a+x install.sh && ./install.sh && uv run kedro run"
+    env:
+      - "ENV=$BRANCH_NAME"
+      - "MLFLOW_SERVER=$_MLFLOW_SERVER"
+      - "DO_NOT_TRACK=1"
+      - "UV_CACHE_DIR=/root/.cache/uv"
+    waitFor: ["CI"]
+
+
+logs_bucket: gs://cours_mlops
